@@ -1,7 +1,8 @@
 """
-🐉 DUNGEON MASTER BOT v3.0 — для Render (PostgreSQL + Webhook)
-===============================================================
-Полностью рабочий код. Вставьте свои токены в переменные окружения Render.
+🐉 MEWGAME BOT — Полная версия для Render (PostgreSQL + Webhook)
+================================================================
+Все игровые данные, все обработчики, админ-панель.
+Адаптировано для бесплатного тарифа Render.
 """
 
 import os
@@ -18,7 +19,6 @@ from typing import Optional
 import aiohttp
 from dotenv import load_dotenv
 
-# Aiogram 3
 from aiogram import Bot, Dispatcher, Router, F, BaseMiddleware
 from aiogram.types import (
     Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup,
@@ -28,11 +28,9 @@ from aiogram.filters import Command, CommandStart
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
 
-# Для вебхуков и PostgreSQL
 from aiohttp import web
 import asyncpg
 
-# Загружаем .env (если есть) — для локального тестирования
 load_dotenv()
 
 # ---------- НАСТРОЙКИ ИЗ ПЕРЕМЕННЫХ ОКРУЖЕНИЯ ----------
@@ -47,15 +45,12 @@ ADMIN_IDS = [int(x.strip()) for x in ADMIN_IDS_RAW.split(",") if x.strip().isdig
 HIVIEWS_API_KEY = os.getenv("HIVIEWS_API_KEY", "")
 HIVIEWS_API_URL = os.getenv("HIVIEWS_API_URL", "https://api.hiviews.ru/show")
 
-# База данных PostgreSQL (Render подставит DATABASE_URL автоматически)
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL не задан! Подключите PostgreSQL на Render.")
 
-# URL вашего сервиса (Render сам добавит RENDER_EXTERNAL_URL)
 BASE_URL = os.getenv("RENDER_EXTERNAL_URL")
 if not BASE_URL:
-    # fallback для локального теста
     BASE_URL = "http://localhost:8000"
 WEBHOOK_PATH = "/webhook"
 WEBHOOK_URL = BASE_URL + WEBHOOK_PATH
@@ -115,7 +110,7 @@ class HiViewsMiddleware(BaseMiddleware):
 router.message.middleware(HiViewsMiddleware())
 router.callback_query.middleware(HiViewsMiddleware())
 
-# ---------- РАБОТА С PostgreSQL (пул соединений) ----------
+# ---------- РАБОТА С PostgreSQL ----------
 class Database:
     _pool: asyncpg.Pool = None
 
@@ -150,7 +145,6 @@ class Database:
     async def fetchval(cls, query, *args):
         async with cls._pool.acquire() as conn:
             return await conn.fetchval(query, *args)
-
 
 # ---------- ИНИЦИАЛИЗАЦИЯ ТАБЛИЦ ----------
 async def init_db():
@@ -231,13 +225,10 @@ async def init_db():
     """)
     logger.info("Database tables initialized")
 
-
 # ---------- ФУНКЦИИ РАБОТЫ С ПОЛЬЗОВАТЕЛЯМИ ----------
 async def get_user(user_id: int) -> Optional[dict]:
     row = await Database.fetchrow("SELECT * FROM users WHERE user_id = $1", user_id)
-    if row:
-        return dict(row)
-    return None
+    return dict(row) if row else None
 
 async def create_user(user_id: int, username: str):
     now = datetime.now().isoformat()
@@ -289,8 +280,7 @@ async def get_global_stats() -> dict:
     stats['active_24h'] = await Database.fetchval("SELECT COUNT(*) FROM users WHERE last_energy >= $1", day_ago)
     return stats
 
-
-# ---------- ИГРОВЫЕ ДАННЫЕ (ПОЛНОСТЬЮ ИЗ ОРИГИНАЛА) ----------
+# ---------- ИГРОВЫЕ ДАННЫЕ ----------
 CLASSES = {
     "warrior": {"name": "⚔️ Воин", "emoji": "⚔️", "hp": 150, "atk": 12, "def": 10, "crit": 5,
                 "desc": "Мастер ближнего боя с высоким здоровьем и защитой"},
@@ -585,12 +575,12 @@ async def add_xp(user_id: int, xp: int) -> str:
 
     new_max_hp = user["max_hp"] + total_hp_bonus
     new_hp = min(new_max_hp, user["hp"] + total_hp_bonus)
-    
+
     await update_user(user_id,
-                  xp=new_xp, level=level, xp_needed=xp_needed,
-                  max_hp=new_max_hp, hp=new_hp,
-                  atk=user["atk"] + total_atk_bonus,
-                  **{"def": user["def"] + total_def_bonus})
+                      xp=new_xp, level=level, xp_needed=xp_needed,
+                      max_hp=new_max_hp, hp=new_hp,
+                      atk=user["atk"] + total_atk_bonus,
+                      **{"def": user["def"] + total_def_bonus})
     return msg
 
 async def check_achievements(user_id: int) -> str:
@@ -652,7 +642,6 @@ def get_vip_end(user: dict) -> datetime:
             pass
     return datetime.now()
 
-
 # ---------- CRYPTO PAY API ----------
 CRYPTO_PAY_API = "https://pay.crypt.bot/api"
 
@@ -689,7 +678,6 @@ async def crypto_get_invoices(invoice_ids: str) -> list:
         logger.error(f"Crypto Pay check error: {e}")
         return []
 
-
 # ---------- ОБРАБОТЧИКИ ----------
 @router.message(CommandStart())
 async def cmd_start(message: Message):
@@ -698,7 +686,6 @@ async def cmd_start(message: Message):
     await create_user(uid, username)
     user = await get_user(uid)
 
-    # Реферальная система
     if message.text:
         args = message.text.split()
         if len(args) > 1 and args[1].isdigit():
@@ -720,7 +707,7 @@ async def cmd_start(message: Message):
     if user["class"]:
         await send_main_menu(message)
     else:
-        text = ("🐉 <b>Добро пожаловать в Dungeon Master!</b>\n\n"
+        text = ("🐉 <b>Добро пожаловать в MewGame!</b>\n\n"
                 "Тебя ждут подземелья, боссы, PvP арена, крафт, "
                 "экспедиции и многое другое!\n\n⚔️ <b>Выбери свой класс:</b>\n\n")
         for key, cls in CLASSES.items():
@@ -738,9 +725,9 @@ async def choose_class(callback: CallbackQuery):
         return await callback.answer("❌ Неизвестный класс")
     cls = CLASSES[cls_key]
     await update_user(callback.from_user.id,
-                  hp=cls["hp"], max_hp=cls["hp"],
-                  atk=cls["atk"], crit=cls["crit"],
-                  **{"class": cls_key, "def": cls["def"]})
+                      hp=cls["hp"], max_hp=cls["hp"],
+                      atk=cls["atk"], crit=cls["crit"],
+                      **{"class": cls_key, "def": cls["def"]})
     await callback.message.edit_text(
         f"🎉 <b>Ты стал {cls['name']}!</b>\n\n"
         f"❤️{cls['hp']} ⚔️{cls['atk']} 🛡️{cls['def']} 🎯{cls['crit']}%\n\nУдачи, герой! 🐉")
@@ -759,7 +746,7 @@ async def send_main_menu(message: Message, edit=False):
         [("📊 Статистика мира", "world_stats"), ("📦 Инвентарь", "inventory")],
         [("💳 Донат-магазин", "donate_shop"), ("🔗 Реферал", "referral")],
     ])
-    text = "🐉 <b>Dungeon Master</b> — Главное меню\n\nВыбери действие:"
+    text = "🐉 <b>MewGame</b> — Главное меню\n\nВыбери действие:"
     try:
         if edit:
             await message.edit_text(text, reply_markup=kb)
@@ -1730,7 +1717,7 @@ async def cb_top(callback: CallbackQuery):
 async def cb_world_stats(callback: CallbackQuery):
     stats = await get_global_stats()
     text = (
-        f"📊 <b>Статистика мира Dungeon Master</b>\n{'━' * 30}\n\n"
+        f"📊 <b>Статистика мира MewGame</b>\n{'━' * 30}\n\n"
         f"👥 Всего героев: <b>{stats['total_players']}</b>\n"
         f"🕐 Активных за 24ч: <b>{stats['active_24h']}</b>\n"
         f"📊 Средний уровень: <b>{stats['avg_level']}</b>\n"
@@ -1793,7 +1780,7 @@ async def cb_donate_buy(callback: CallbackQuery):
     item = DONATE_ITEMS[item_key]
     user_id = callback.from_user.id
     payload = json.dumps({"user_id": user_id, "item": item_key, "ts": int(time.time())})
-    desc = f"Dungeon Master: {item['name']}"
+    desc = f"MewGame: {item['name']}"
     await callback.answer("⏳ Создаю счёт...")
     invoice = await crypto_create_invoice(item["price_usd"], desc, payload)
     if not invoice:
@@ -1887,7 +1874,7 @@ async def cmd_promo(message: Message):
     if promo["gems"]: r.append(f"+{promo['gems']}💎")
     await message.answer(f"🎉 Промокод <b>{code}</b>: {'  '.join(r)}")
 
-# ---------- АДМИН-ПАНЕЛЬ (сокращено, но можно добавить все функции) ----------
+# ---------- АДМИН-ПАНЕЛЬ ----------
 @router.message(Command("admin"))
 async def cmd_admin(message: Message):
     if message.from_user.id not in ADMIN_IDS:
@@ -1924,9 +1911,231 @@ async def show_admin_panel(target, edit=False):
     elif hasattr(target, 'answer'):
         await target.answer(text, reply_markup=kb)
 
-# Здесь должны быть остальные обработчики админки (adm_revenue, adm_top_don и т.д.)
-# Из-за ограничения длины они опущены, но их можно скопировать из исходного кода,
-# заменив вызовы aiosqlite на Database.fetch и Database.execute.
+@router.callback_query(F.data == "adm_panel")
+async def cb_adm_panel(callback: CallbackQuery):
+    if callback.from_user.id not in ADMIN_IDS:
+        return
+    await show_admin_panel(callback.message, edit=True)
+    await callback.answer()
+
+@router.callback_query(F.data == "adm_revenue")
+async def cb_adm_revenue(callback: CallbackQuery):
+    if callback.from_user.id not in ADMIN_IDS:
+        return
+    async with Database._pool.acquire() as conn:
+        rows = await conn.fetch("""
+            SELECT date(paid_at) as day, SUM(amount_usd) as total, COUNT(*) as cnt
+            FROM payments
+            WHERE status='paid' AND paid_at >= $1
+            GROUP BY day ORDER BY day
+        """, (datetime.now() - timedelta(days=7)).isoformat())
+    text = "📊 <b>Доход за 7 дней:</b>\n\n"
+    total = 0
+    for r in rows:
+        text += f"📅 {r['day']}: <b>${r['total']:.2f}</b> ({r['cnt']})\n"
+        total += r['total']
+    text += f"\n💰 Итого: <b>${total:.2f}</b>" if rows else "Нет данных.\n"
+    kb = make_kb([[("🔙 Панель", "adm_panel")]])
+    await callback.message.edit_text(text, reply_markup=kb)
+    await callback.answer()
+
+@router.callback_query(F.data == "adm_top_don")
+async def cb_adm_top_don(callback: CallbackQuery):
+    if callback.from_user.id not in ADMIN_IDS:
+        return
+    async with Database._pool.acquire() as conn:
+        rows = await conn.fetch("SELECT username, user_id, total_spent_usd FROM users WHERE total_spent_usd > 0 ORDER BY total_spent_usd DESC LIMIT 10")
+    text = "👥 <b>Топ донатеров:</b>\n\n"
+    for i, r in enumerate(rows, 1):
+        text += f"{i}. {r['username']} (ID:{r['user_id']}) — <b>${r['total_spent_usd']:.2f}</b>\n"
+    if not rows:
+        text += "Нет данных.\n"
+    kb = make_kb([[("🔙 Панель", "adm_panel")]])
+    await callback.message.edit_text(text, reply_markup=kb)
+    await callback.answer()
+
+@router.callback_query(F.data == "adm_stats")
+async def cb_adm_stats(callback: CallbackQuery):
+    if callback.from_user.id not in ADMIN_IDS:
+        return
+    stats = await get_global_stats()
+    async with Database._pool.acquire() as conn:
+        revenue = await conn.fetchval("SELECT COALESCE(SUM(total_spent_usd),0) FROM users")
+        paying = await conn.fetchval("SELECT COUNT(*) FROM users WHERE total_spent_usd > 0")
+        vip_count = await conn.fetchval("SELECT COUNT(*) FROM users WHERE vip_until > $1", datetime.now().isoformat())
+    text = (f"📈 <b>Подробная статистика</b>\n{'━' * 28}\n\n"
+            f"👥 Всего: {stats['total_players']} | DAU: {stats['active_24h']}\n👑 VIP: {vip_count}\n{'━' * 28}\n"
+            f"💰 ${revenue:.2f} | 💳 {paying} | ARPU: ${revenue/paying if paying else 0:.2f}\n{'━' * 28}\n"
+            f"⚔️ {stats['total_fights']} | 👑 {stats['total_bosses']} | 🌟 {stats['total_elites']} | PvP {stats['total_pvp']}\n"
+            f"🎁 {stats['total_chests']} | 🔨 {stats['total_crafts']}\n")
+    kb = make_kb([[("🔙 Панель", "adm_panel")]])
+    await callback.message.edit_text(text, reply_markup=kb)
+    await callback.answer()
+
+@router.callback_query(F.data == "adm_top_players")
+async def cb_adm_top_players(callback: CallbackQuery):
+    if callback.from_user.id not in ADMIN_IDS:
+        return
+    players = await get_top_players("level", 15)
+    text = "🏆 <b>Топ-15:</b>\n\n"
+    for i, p in enumerate(players, 1):
+        cls = CLASSES.get(p["class"], {})
+        text += f"{i}. {cls.get('emoji','')} {p['username']} — ур.{p['level']} 💰{p['gold']} 💎{p['gems']}\n"
+    kb = make_kb([[("🔙 Панель", "adm_panel")]])
+    await callback.message.edit_text(text, reply_markup=kb)
+    await callback.answer()
+
+@router.callback_query(F.data.in_({"adm_promo", "adm_broadcast", "adm_give", "adm_ban", "adm_find"}))
+async def cb_adm_text_cmds(callback: CallbackQuery):
+    if callback.from_user.id not in ADMIN_IDS:
+        return
+    info = {
+        "adm_promo": "🎫 <b>Промокоды</b>\n\n<code>/addpromo КОД ЗОЛОТО ГЕМЫ МАКС</code>\nПример: <code>/addpromo NEWYEAR 100 10 50</code>",
+        "adm_broadcast": "📢 <b>Рассылка</b>\n\n<code>/broadcast Текст</code>",
+        "adm_give": "💰 <b>Ресурсы</b>\n\n<code>/give USER_ID gold/gems КОЛ-ВО</code>\n<code>/givevip USER_ID ДНЕЙ</code>",
+        "adm_ban": "🔨 <b>Бан</b>\n\n<code>/ban USER_ID</code>\n<code>/unban USER_ID</code>",
+        "adm_find": "🔍 <b>Поиск</b>\n\n<code>/find USER_ID</code>",
+    }
+    text = info[callback.data]
+    if callback.data == "adm_promo":
+        async with Database._pool.acquire() as conn:
+            promos = await conn.fetch("SELECT * FROM promo_codes ORDER BY created_at DESC LIMIT 10")
+        if promos:
+            text += "\n\n<b>Последние:</b>\n"
+            for p in promos:
+                text += f"  <code>{p['code']}</code> — {p['gold']}💰 {p['gems']}💎 ({p['used_count']}/{p['max_uses']})\n"
+    kb = make_kb([[("🔙 Панель", "adm_panel")]])
+    await callback.message.edit_text(text, reply_markup=kb)
+    await callback.answer()
+
+@router.callback_query(F.data == "adm_system")
+async def cb_adm_system(callback: CallbackQuery):
+    if callback.from_user.id not in ADMIN_IDS:
+        return
+    db_size = 0  # не определяем для PostgreSQL, можно вывести что-то другое
+    hiviews_status = f"✅ Ключ задан" if HIVIEWS_API_KEY else "❌ Не настроен"
+    text = (f"⚙️ <b>Система</b>\n\n🐍 Python: {sys.version.split()[0]}\n"
+            f"🗄️ База данных: PostgreSQL (внешняя)\n📅 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+            f"📢 HiViews: {hiviews_status}\n"
+            f"🔑 Crypto Pay: {'✅' if CRYPTO_PAY_TOKEN else '❌'}\n")
+    kb = make_kb([[("🔙 Панель", "adm_panel")]])
+    await callback.message.edit_text(text, reply_markup=kb)
+    await callback.answer()
+
+# Текстовые админ-команды
+@router.message(Command("addpromo"))
+async def cmd_addpromo(message: Message):
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    args = message.text.split()
+    if len(args) < 5:
+        return await message.answer("Формат: /addpromo КОД ЗОЛОТО ГЕМЫ МАКС")
+    code, gold, gems, mx = args[1].upper(), int(args[2]), int(args[3]), int(args[4])
+    async with Database._pool.acquire() as conn:
+        await conn.execute("INSERT INTO promo_codes (code, gold, gems, max_uses, created_at) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (code) DO UPDATE SET gold=$2, gems=$3, max_uses=$4, created_at=$5",
+                           code, gold, gems, mx, datetime.now().isoformat())
+    await message.answer(f"✅ <b>{code}</b>: {gold}💰 {gems}💎 (макс:{mx})")
+
+@router.message(Command("give"))
+async def cmd_give(message: Message):
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    args = message.text.split()
+    if len(args) < 4:
+        return await message.answer("/give USER_ID gold/gems КОЛ-ВО")
+    tid, cur, amt = int(args[1]), args[2], int(args[3])
+    user = await get_user(tid)
+    if not user:
+        return await message.answer("❌ Не найден")
+    if cur == "gold":
+        await update_user(tid, gold=user["gold"] + amt)
+    elif cur == "gems":
+        await update_user(tid, gems=user["gems"] + amt, total_gems_earned=user["total_gems_earned"] + amt)
+    else:
+        return await message.answer("gold или gems")
+    await message.answer(f"✅ +{amt} {cur} → {user['username']}")
+    try:
+        await bot.send_message(tid, f"🎁 +{amt} {'💰' if cur == 'gold' else '💎'}!")
+    except:
+        pass
+
+@router.message(Command("givevip"))
+async def cmd_givevip(message: Message):
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    args = message.text.split()
+    if len(args) < 3:
+        return await message.answer("/givevip USER_ID ДНЕЙ")
+    tid, days = int(args[1]), int(args[2])
+    user = await get_user(tid)
+    if not user:
+        return await message.answer("❌ Не найден")
+    vip_end = get_vip_end(user) + timedelta(days=days)
+    await update_user(tid, vip_until=vip_end.isoformat())
+    await message.answer(f"✅ VIP {days}д → {user['username']}")
+    try:
+        await bot.send_message(tid, f"👑 VIP на {days} дней!")
+    except:
+        pass
+
+@router.message(Command("ban"))
+async def cmd_ban(message: Message):
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    args = message.text.split()
+    if len(args) < 2:
+        return await message.answer("/ban USER_ID")
+    await update_user(int(args[1]), is_banned=1)
+    await message.answer(f"🔨 Забанен: {args[1]}")
+
+@router.message(Command("unban"))
+async def cmd_unban(message: Message):
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    args = message.text.split()
+    if len(args) < 2:
+        return await message.answer("/unban USER_ID")
+    await update_user(int(args[1]), is_banned=0)
+    await message.answer(f"✅ Разбанен: {args[1]}")
+
+@router.message(Command("find"))
+async def cmd_find(message: Message):
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    args = message.text.split()
+    if len(args) < 2:
+        return await message.answer("/find USER_ID")
+    user = await get_user(int(args[1]))
+    if not user:
+        return await message.answer("❌ Не найден")
+    cls = CLASSES.get(user["class"], {})
+    text = (f"🔍 <b>{user['username']}</b> {cls.get('emoji','')} {'👑VIP' if is_vip(user) else ''} {'🚫БАН' if user['is_banned'] else ''}\n"
+            f"ID: <code>{user['user_id']}</code>\nУр.{user['level']} XP:{user['xp']}/{user['xp_needed']}\n"
+            f"HP:{user['hp']}/{user['max_hp']} ⚔️{user['atk']} 🛡️{user['def']} 🎯{user['crit']}%\n"
+            f"💰{user['gold']} 💎{user['gems']} ⚡{user['energy']}/{user['max_energy']}\n"
+            f"PvP:{user['wins']}W/{user['losses']}L Данжи:{user['dungeon_wins']} Боссы:{user['boss_kills']}\n"
+            f"Заработано: {user['total_gold_earned']}💰 {user['total_gems_earned']}💎\n"
+            f"Потрачено: ${user['total_spent_usd']:.2f} Рефов:{user['referral_count']} Стрик:{user['streak']}")
+    await message.answer(text)
+
+@router.message(Command("broadcast"))
+async def cmd_broadcast(message: Message):
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    text = message.text.replace("/broadcast ", "", 1)
+    if not text or text == "/broadcast":
+        return await message.answer("/broadcast ТЕКСТ")
+    async with Database._pool.acquire() as conn:
+        users = await conn.fetch("SELECT user_id FROM users WHERE is_banned = 0")
+    sent, failed = 0, 0
+    for (uid,) in users:
+        try:
+            await bot.send_message(uid, f"📢 <b>Объявление</b>\n\n{text}")
+            sent += 1
+            await asyncio.sleep(0.05)
+        except:
+            failed += 1
+    await message.answer(f"📢 ✅{sent} ❌{failed}")
 
 # ---------- ЗАПУСК ВЕБХУКА ----------
 async def on_startup():
