@@ -585,11 +585,12 @@ async def add_xp(user_id: int, xp: int) -> str:
 
     new_max_hp = user["max_hp"] + total_hp_bonus
     new_hp = min(new_max_hp, user["hp"] + total_hp_bonus)
+    
     await update_user(user_id,
-                      xp=new_xp, level=level, xp_needed=xp_needed,
-                      max_hp=new_max_hp, hp=new_hp,
-                      atk=user["atk"] + total_atk_bonus,
-                      def=user["def"] + total_def_bonus)
+                  xp=new_xp, level=level, xp_needed=xp_needed,
+                  max_hp=new_max_hp, hp=new_hp,
+                  atk=user["atk"] + total_atk_bonus,
+                  **{"def": user["def"] + total_def_bonus})
     return msg
 
 async def check_achievements(user_id: int) -> str:
