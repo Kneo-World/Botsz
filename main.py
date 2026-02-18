@@ -737,9 +737,10 @@ async def choose_class(callback: CallbackQuery):
     if cls_key not in CLASSES:
         return await callback.answer("❌ Неизвестный класс")
     cls = CLASSES[cls_key]
-    await update_user(callback.from_user.id, class=cls_key, hp=cls["hp"], max_hp=cls["hp"],
+    await update_user(callback.from_user.id,
+                  hp=cls["hp"], max_hp=cls["hp"],
                   atk=cls["atk"], crit=cls["crit"],
-                  **{"def": cls["def"]})
+                  **{"class": cls_key, "def": cls["def"]})
     await callback.message.edit_text(
         f"🎉 <b>Ты стал {cls['name']}!</b>\n\n"
         f"❤️{cls['hp']} ⚔️{cls['atk']} 🛡️{cls['def']} 🎯{cls['crit']}%\n\nУдачи, герой! 🐉")
